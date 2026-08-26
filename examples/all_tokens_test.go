@@ -6,8 +6,6 @@ import (
 	sdk "github.com/funcblock-quant/hyperliquid-go-sdk"
 )
 
-const walletAddress = "youWalletAddress"
-
 func TestGetAllTokens(t *testing.T) {
 	info, err := sdk.NewInfo(sdk.TestnetAPIURL)
 	if err != nil {
@@ -26,7 +24,7 @@ func TestOpenOrders(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create sdk.Info for all_tokens_test: %v", err)
 	}
-	orders, err := info.OpenOrders(walletAddress)
+	orders, err := info.OpenOrders(getTestAddress(t))
 	if err != nil {
 		t.Fatalf("Failed to fetch open orders: %v", err)
 	}
@@ -39,7 +37,7 @@ func TestFrontendOpenOrders(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create sdk.Info for all_tokens_test: %v", err)
 	}
-	orders, err := info.FrontendOpenOrders(walletAddress)
+	orders, err := info.FrontendOpenOrders(getTestAddress(t))
 	if err != nil {
 		t.Fatalf("Failed to fetch frontend open orders: %v", err)
 	}
@@ -51,7 +49,7 @@ func TestUserDepositWithdrawTxs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create sdk.Info for all_tokens_test: %v", err)
 	}
-	txs, err := info.UserDepositWithdrawTxs(walletAddress, nil, nil)
+	txs, err := info.UserDepositWithdrawTxs(getTestAddress(t), nil, nil)
 	if err != nil {
 		t.Fatalf("Failed to fetch user deposit & withdraw txs: %v", err)
 	}
@@ -64,7 +62,7 @@ func TestUserFills(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create sdk.Info for all_tokens_test: %v", err)
 	}
-	txs, err := info.UserFills(walletAddress)
+	txs, err := info.UserFills(getTestAddress(t))
 	if err != nil {
 		t.Fatalf("Failed to fetch user fills: %v", err)
 	}
@@ -77,7 +75,7 @@ func TestUserFundingHistory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create sdk.Info for all_tokens_test: %v", err)
 	}
-	txs, err := info.UserFundingHistory(walletAddress, 0, nil)
+	txs, err := info.UserFundingHistory(getTestAddress(t), 0, nil)
 	if err != nil {
 		t.Fatalf("Failed to fetch user funding history: %v", err)
 	}
@@ -89,7 +87,7 @@ func TestUserPortfolio(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create sdk.Info for all_tokens_test: %v", err)
 	}
-	portfolio, err := info.UserPortfolio(walletAddress)
+	portfolio, err := info.UserPortfolio(getTestAddress(t))
 	if err != nil {
 		t.Fatalf("Failed to fetch user portfolio: %v", err)
 	}
@@ -102,7 +100,7 @@ func TestUserFees(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create sdk.Info for all_tokens_test: %v", err)
 	}
-	fees, err := info.UserFees(walletAddress)
+	fees, err := info.UserFees(getTestAddress(t))
 	if err != nil {
 		t.Fatalf("Failed to fetch user fees: %v", err)
 	}
@@ -114,7 +112,7 @@ func TestUserStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create sdk.Info for all_tokens_test: %v", err)
 	}
-	userState, err := info.UserState(walletAddress)
+	userState, err := info.UserState(getTestAddress(t))
 	if err != nil {
 		t.Fatalf("Failed to fetch user state: %v", err)
 	}

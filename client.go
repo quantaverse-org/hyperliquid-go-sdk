@@ -28,7 +28,7 @@ func NewClient(ctx context.Context, baseURL string) *Client {
 	return &Client{
 		baseURL: baseURL,
 		httpClient: &http.Client{
-			Timeout: 1 * time.Second,
+			Timeout: 10 * time.Second,
 		},
 	}
 }

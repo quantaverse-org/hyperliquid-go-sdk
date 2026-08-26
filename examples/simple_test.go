@@ -8,7 +8,7 @@ import (
 
 func TestSimpleInfo(t *testing.T) {
 	// 创建信息客户端
-	info, err := sdk.NewInfo(sdk.MainnetAPIURL)
+	info, err := sdk.NewInfo(sdk.TestnetAPIURL)
 	if err != nil {
 		t.Fatalf("Failed to create sdk.Info: %v", err)
 	}
@@ -21,7 +21,7 @@ func TestSimpleInfo(t *testing.T) {
 
 	// 输出一些价格信息
 	t.Logf("Total trading pairs: %d", len(mids))
-	
+
 	// 检查是否有 BTC 价格
 	if btcPrice, exists := mids["BTC"]; exists {
 		t.Logf("BTC price: %s", btcPrice)
@@ -46,7 +46,7 @@ func TestSimpleInfo(t *testing.T) {
 
 func TestMetaInfo(t *testing.T) {
 	// 创建信息客户端
-	info, err := sdk.NewInfo(sdk.MainnetAPIURL)
+	info, err := sdk.NewInfo(sdk.TestnetAPIURL)
 	if err != nil {
 		t.Fatalf("Failed to create sdk.Info: %v", err)
 	}
@@ -58,7 +58,7 @@ func TestMetaInfo(t *testing.T) {
 	}
 
 	t.Logf("Meta universe count: %d", len(meta.Universe))
-	
+
 	// 输出前几个交易对的信息
 	count := 0
 	for asset, info := range meta.Universe {
@@ -68,4 +68,4 @@ func TestMetaInfo(t *testing.T) {
 		t.Logf("Asset %d: %s (szDecimals: %d)", asset, info.Name, info.SzDecimals)
 		count++
 	}
-} 
+}

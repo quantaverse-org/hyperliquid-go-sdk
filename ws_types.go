@@ -10,26 +10,58 @@ type WSMessage struct {
 }
 
 type Subscription struct {
-	Type     string `json:"type"`
-	Coin     string `json:"coin,omitempty"`
-	User     string `json:"user,omitempty"`
-	Interval string `json:"interval,omitempty"`
+	Type              string `json:"type"`
+	Coin              string `json:"coin,omitempty"`
+	User              string `json:"user,omitempty"`
+	Interval          string `json:"interval,omitempty"`
+	Dex               string `json:"dex,omitempty"`
+	NSigFigs          *int   `json:"nSigFigs,omitempty"`
+	Mantissa          *int   `json:"mantissa,omitempty"`
+	AggregateByTime   *bool  `json:"aggregateByTime,omitempty"`
+	IsPortfolioMargin *bool  `json:"isPortfolioMargin,omitempty"`
 }
 
 type subKey struct {
-	typ      string
-	coin     string
-	user     string
-	interval string
+	typ               string
+	coin              string
+	user              string
+	interval          string
+	dex               string
+	nSigFigs          int
+	mantissa          int
+	aggregateByTime   bool
+	isPortfolioMargin bool
+	hasNSigFigs       bool
+	hasMantissa       bool
+	hasAggregate      bool
+	hasPortfolio      bool
 }
 
 func (s Subscription) key() subKey {
-	return subKey{
+	key := subKey{
 		typ:      s.Type,
 		coin:     s.Coin,
 		user:     s.User,
 		interval: s.Interval,
+		dex:      s.Dex,
 	}
+	if s.NSigFigs != nil {
+		key.nSigFigs = *s.NSigFigs
+		key.hasNSigFigs = true
+	}
+	if s.Mantissa != nil {
+		key.mantissa = *s.Mantissa
+		key.hasMantissa = true
+	}
+	if s.AggregateByTime != nil {
+		key.aggregateByTime = *s.AggregateByTime
+		key.hasAggregate = true
+	}
+	if s.IsPortfolioMargin != nil {
+		key.isPortfolioMargin = *s.IsPortfolioMargin
+		key.hasPortfolio = true
+	}
+	return key
 }
 
 type WsCommand struct {

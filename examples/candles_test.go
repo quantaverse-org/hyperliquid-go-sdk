@@ -9,7 +9,7 @@ import (
 )
 
 func TestCandlesSnapshot(t *testing.T) {
-	info, err := sdk.NewInfo(sdk.MainnetAPIURL)
+	info, err := sdk.NewInfo(sdk.TestnetAPIURL)
 	if err != nil {
 		t.Fatalf("Failed to create sdk.Info for candles_test: %v", err)
 	}
@@ -48,7 +48,7 @@ func TestCandlesSnapshot(t *testing.T) {
 }
 
 func TestCandleWebSocket(t *testing.T) {
-	ws := sdk.NewWebsocketClient("")
+	ws := sdk.NewWebsocketClient(sdk.TestnetAPIURL)
 
 	if err := ws.Connect(context.Background()); err != nil {
 		t.Fatalf("Failed to connect: %v", err)

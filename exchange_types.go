@@ -18,8 +18,9 @@ const (
 	TakeProfit string = "tp"
 	StopLose   string = "sl"
 
-	GroupingNa   string = "na"
-	GroupingTpsl string = "tpsl"
+	GroupingNa           string = "na"
+	GroupingTpsl         string = "normalTpsl"
+	GroupingPositionTpsl string = "positionTpsl"
 )
 
 type AssetInfo struct {
@@ -29,6 +30,14 @@ type AssetInfo struct {
 
 type Meta struct {
 	Universe []AssetInfo `json:"universe"`
+}
+
+type PerpDexInfo struct {
+	Name            string `json:"name"`
+	FullName        string `json:"fullName,omitempty"`
+	Deployer        string `json:"deployer,omitempty"`
+	OracleUpdater   string `json:"oracleUpdater,omitempty"`
+	CollateralToken int    `json:"collateralToken,omitempty"`
 }
 
 type SpotAssetInfo struct {
@@ -300,6 +309,80 @@ func (action *UpdateIsolatedMarginAction) Tp() string {
 	return action.Type
 }
 
+type TopUpIsolatedOnlyMarginAction struct {
+	Type     string `json:"type" msgpack:"type"`
+	Asset    int    `json:"asset" msgpack:"asset"`
+	Leverage string `json:"leverage" msgpack:"leverage"`
+}
+
+func (action *TopUpIsolatedOnlyMarginAction) Tp() string {
+	return action.Type
+}
+
+type ScheduleCancelAction struct {
+	Type string  `json:"type" msgpack:"type"`
+	Time *uint64 `json:"time,omitempty" msgpack:"time,omitempty"`
+}
+
+func (action *ScheduleCancelAction) Tp() string {
+	return action.Type
+}
+
+type TwapRequest struct {
+	Coin       string
+	IsBuy      bool
+	Size       float64
+	ReduceOnly bool
+	Minutes    int
+	Randomize  bool
+}
+
+type TwapWire struct {
+	Asset      int    `json:"a" msgpack:"a"`
+	IsBuy      bool   `json:"b" msgpack:"b"`
+	Size       string `json:"s" msgpack:"s"`
+	ReduceOnly bool   `json:"r" msgpack:"r"`
+	Minutes    int    `json:"m" msgpack:"m"`
+	Randomize  bool   `json:"t" msgpack:"t"`
+}
+
+type TwapOrderAction struct {
+	Type string   `json:"type" msgpack:"type"`
+	Twap TwapWire `json:"twap" msgpack:"twap"`
+}
+
+func (action *TwapOrderAction) Tp() string {
+	return action.Type
+}
+
+type TwapCancelAction struct {
+	Type   string `json:"type" msgpack:"type"`
+	Asset  int    `json:"a" msgpack:"a"`
+	TwapID int64  `json:"t" msgpack:"t"`
+}
+
+func (action *TwapCancelAction) Tp() string {
+	return action.Type
+}
+
+type SetReferrerAction struct {
+	Type string `json:"type" msgpack:"type"`
+	Code string `json:"code" msgpack:"code"`
+}
+
+func (action *SetReferrerAction) Tp() string {
+	return action.Type
+}
+
+type CreateSubAccountAction struct {
+	Type string `json:"type" msgpack:"type"`
+	Name string `json:"name" msgpack:"name"`
+}
+
+func (action *CreateSubAccountAction) Tp() string {
+	return action.Type
+}
+
 type VaultUsdTransferAction struct {
 	Type         string `json:"type" msgpack:"type"`
 	VaultAddress string `json:"vaultAddress" msgpack:"vaultAddress"`
@@ -308,6 +391,220 @@ type VaultUsdTransferAction struct {
 }
 
 func (action *VaultUsdTransferAction) Tp() string {
+	return action.Type
+}
+
+type Withdraw3Action struct {
+	Type             string `json:"type"`
+	HyperliquidChain string `json:"hyperliquidChain"`
+	SignatureChainID string `json:"signatureChainId"`
+	Destination      string `json:"destination"`
+	Amount           string `json:"amount"`
+	Time             uint64 `json:"time"`
+}
+
+func (action *Withdraw3Action) Tp() string {
+	return action.Type
+}
+
+type USDSendAction struct {
+	Type             string `json:"type"`
+	HyperliquidChain string `json:"hyperliquidChain"`
+	SignatureChainID string `json:"signatureChainId"`
+	Destination      string `json:"destination"`
+	Amount           string `json:"amount"`
+	Time             uint64 `json:"time"`
+}
+
+func (action *USDSendAction) Tp() string {
+	return action.Type
+}
+
+type SpotSendAction struct {
+	Type             string `json:"type"`
+	HyperliquidChain string `json:"hyperliquidChain"`
+	SignatureChainID string `json:"signatureChainId"`
+	Destination      string `json:"destination"`
+	Token            string `json:"token"`
+	Amount           string `json:"amount"`
+	Time             uint64 `json:"time"`
+}
+
+func (action *SpotSendAction) Tp() string {
+	return action.Type
+}
+
+type USDClassTransferExchangeAction struct {
+	Type             string `json:"type"`
+	HyperliquidChain string `json:"hyperliquidChain"`
+	SignatureChainID string `json:"signatureChainId"`
+	Amount           string `json:"amount"`
+	ToPerp           bool   `json:"toPerp"`
+	Nonce            uint64 `json:"nonce"`
+}
+
+func (action *USDClassTransferExchangeAction) Tp() string {
+	return action.Type
+}
+
+type SendAssetAction struct {
+	Type             string `json:"type"`
+	HyperliquidChain string `json:"hyperliquidChain"`
+	SignatureChainID string `json:"signatureChainId"`
+	Destination      string `json:"destination"`
+	SourceDex        string `json:"sourceDex"`
+	DestinationDex   string `json:"destinationDex"`
+	Token            string `json:"token"`
+	Amount           string `json:"amount"`
+	FromSubAccount   string `json:"fromSubAccount"`
+	Nonce            uint64 `json:"nonce"`
+}
+
+func (action *SendAssetAction) Tp() string {
+	return action.Type
+}
+
+type TokenDelegateAction struct {
+	Type             string         `json:"type"`
+	HyperliquidChain string         `json:"hyperliquidChain"`
+	SignatureChainID string         `json:"signatureChainId"`
+	Validator        common.Address `json:"validator"`
+	Wei              uint64         `json:"wei"`
+	IsUndelegate     bool           `json:"isUndelegate"`
+	Nonce            uint64         `json:"nonce"`
+}
+
+func (action *TokenDelegateAction) Tp() string {
+	return action.Type
+}
+
+type ApproveAgentAction struct {
+	Type             string         `json:"type"`
+	HyperliquidChain string         `json:"hyperliquidChain"`
+	SignatureChainID string         `json:"signatureChainId"`
+	AgentAddress     common.Address `json:"agentAddress"`
+	AgentName        string         `json:"agentName"`
+	Nonce            uint64         `json:"nonce"`
+}
+
+func (action *ApproveAgentAction) Tp() string {
+	return action.Type
+}
+
+type ApproveBuilderFeeAction struct {
+	Type             string         `json:"type"`
+	HyperliquidChain string         `json:"hyperliquidChain"`
+	SignatureChainID string         `json:"signatureChainId"`
+	Builder          common.Address `json:"builder"`
+	MaxFeeRate       string         `json:"maxFeeRate"`
+	Nonce            uint64         `json:"nonce"`
+}
+
+func (action *ApproveBuilderFeeAction) Tp() string {
+	return action.Type
+}
+
+type ConvertToMultiSigUserAction struct {
+	Type             string `json:"type"`
+	HyperliquidChain string `json:"hyperliquidChain"`
+	SignatureChainID string `json:"signatureChainId"`
+	Signers          string `json:"signers"`
+	Nonce            uint64 `json:"nonce"`
+}
+
+func (action *ConvertToMultiSigUserAction) Tp() string {
+	return action.Type
+}
+
+type UserDexAbstractionAction struct {
+	Type             string `json:"type"`
+	HyperliquidChain string `json:"hyperliquidChain"`
+	SignatureChainID string `json:"signatureChainId"`
+	User             string `json:"user"`
+	Enabled          bool   `json:"enabled"`
+	Nonce            uint64 `json:"nonce"`
+}
+
+func (action *UserDexAbstractionAction) Tp() string {
+	return action.Type
+}
+
+type UserSetAbstractionAction struct {
+	Type             string `json:"type"`
+	HyperliquidChain string `json:"hyperliquidChain"`
+	SignatureChainID string `json:"signatureChainId"`
+	User             string `json:"user"`
+	Abstraction      string `json:"abstraction"`
+	Nonce            uint64 `json:"nonce"`
+}
+
+func (action *UserSetAbstractionAction) Tp() string {
+	return action.Type
+}
+
+type AgentEnableDexAbstractionAction struct {
+	Type string `json:"type" msgpack:"type"`
+}
+
+func (action *AgentEnableDexAbstractionAction) Tp() string {
+	return action.Type
+}
+
+type AgentSetAbstractionAction struct {
+	Type        string `json:"type" msgpack:"type"`
+	Abstraction string `json:"abstraction" msgpack:"abstraction"`
+}
+
+func (action *AgentSetAbstractionAction) Tp() string {
+	return action.Type
+}
+
+type EvmUserModifyAction struct {
+	Type           string `json:"type" msgpack:"type"`
+	UsingBigBlocks bool   `json:"usingBigBlocks" msgpack:"usingBigBlocks"`
+}
+
+func (action *EvmUserModifyAction) Tp() string {
+	return action.Type
+}
+
+type MultiSigPayload struct {
+	MultiSigUser string `json:"multiSigUser" msgpack:"multiSigUser"`
+	OuterSigner  string `json:"outerSigner" msgpack:"outerSigner"`
+	Action       any    `json:"action" msgpack:"action"`
+}
+
+type MultiSigAction struct {
+	Type             string          `json:"type" msgpack:"type"`
+	SignatureChainID string          `json:"signatureChainId" msgpack:"signatureChainId"`
+	Signatures       []Signature     `json:"signatures" msgpack:"signatures"`
+	Payload          MultiSigPayload `json:"payload" msgpack:"payload"`
+}
+
+func (action *MultiSigAction) Tp() string {
+	return action.Type
+}
+
+type SubAccountTransferAction struct {
+	Type           string `json:"type" msgpack:"type"`
+	SubAccountUser string `json:"subAccountUser" msgpack:"subAccountUser"`
+	IsDeposit      bool   `json:"isDeposit" msgpack:"isDeposit"`
+	Usd            int    `json:"usd" msgpack:"usd"`
+}
+
+func (action *SubAccountTransferAction) Tp() string {
+	return action.Type
+}
+
+type SubAccountSpotTransferAction struct {
+	Type           string `json:"type" msgpack:"type"`
+	SubAccountUser string `json:"subAccountUser" msgpack:"subAccountUser"`
+	IsDeposit      bool   `json:"isDeposit" msgpack:"isDeposit"`
+	Token          string `json:"token" msgpack:"token"`
+	Amount         string `json:"amount" msgpack:"amount"`
+}
+
+func (action *SubAccountSpotTransferAction) Tp() string {
 	return action.Type
 }
 

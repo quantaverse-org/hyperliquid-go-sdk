@@ -1,7 +1,6 @@
 package examples
 
 import (
-	"strconv"
 	"testing"
 
 	sdk "github.com/funcblock-quant/hyperliquid-go-sdk"
@@ -13,12 +12,13 @@ func TestOrders(t *testing.T) {
 	t.Run("place limit order and cancel then", func(t *testing.T) {
 		// place a limit buy order
 		coin := "SOL"
+		marketPrice := testMarketPrice(t, coin)
 		result, err := exchange.Order(
 			sdk.OrderRequest{
 				Coin:    coin,
 				IsBuy:   true,
 				Size:    1, // Smaller size for testing
-				LimitPx: 150,
+				LimitPx: marketPrice * 0.5,
 				OrderType: sdk.OrderType{
 					Limit: &sdk.LimitOrderType{
 						Tif: sdk.TifGtc,
@@ -63,7 +63,7 @@ func TestOrders(t *testing.T) {
 	t.Run("open position and close then", func(t *testing.T) {
 		// open a long position
 		coin := "kPEPE"
-		marketPrice := float64(0.014)
+		marketPrice := testMarketPrice(t, coin)
 		result, err := exchange.MarketOrder(
 			sdk.MarketRequest{
 				Coin:        coin,
@@ -87,15 +87,14 @@ func TestOrders(t *testing.T) {
 			t.Logf("Market order is filled: %+v", order)
 
 			// close the position
-			size, _ := strconv.ParseFloat(order.TotalSize, 64)
 			result, err = exchange.MarketOrder(
 				sdk.MarketRequest{
 					Coin:        coin,
 					IsBuy:       false,
 					ReduceOnly:  true,
-					Size:        size,
-					MarketPrice: marketPrice,
-					Slippage:    0.05,
+					Size:        14078,
+					MarketPrice: testMarketPrice(t, coin),
+					Slippage:    0.20,
 					Cloid:       nil,
 				},
 				nil,

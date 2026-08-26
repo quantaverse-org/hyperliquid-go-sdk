@@ -13,7 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
-func actionHash(action any, vault *common.Address, nonce uint64) (common.Hash, error) {
+func actionHash(action any, vault *common.Address, nonce uint64, expiresAfter *uint64) (common.Hash, error) {
 	data, err := msgpack.Marshal(action)
 	if err != nil {
 		return common.Hash{}, fmt.Errorf("error while marshaling action: %s", err)
@@ -27,6 +27,12 @@ func actionHash(action any, vault *common.Address, nonce uint64) (common.Hash, e
 	} else {
 		data = append(data, '\x01')
 		data = append(data, vault.Bytes()...)
+	}
+	if expiresAfter != nil {
+		expiresAfterBytes := make([]byte, 8)
+		binary.BigEndian.PutUint64(expiresAfterBytes, *expiresAfter)
+		data = append(data, '\x00')
+		data = append(data, expiresAfterBytes...)
 	}
 
 	return crypto.Keccak256Hash(data), nil
@@ -78,7 +84,18 @@ func SignL1Action(
 	nonce uint64,
 	isMainnet bool,
 ) (*Signature, error) {
-	hash, err := actionHash(action, vault, nonce)
+	return SignL1ActionWithExpiresAfter(signer, action, vault, nonce, nil, isMainnet)
+}
+
+func SignL1ActionWithExpiresAfter(
+	signer Signer,
+	action any,
+	vault *common.Address,
+	nonce uint64,
+	expiresAfter *uint64,
+	isMainnet bool,
+) (*Signature, error) {
+	hash, err := actionHash(action, vault, nonce, expiresAfter)
 	if err != nil {
 		return nil, err
 	}
@@ -94,7 +111,7 @@ func SignL1ActionRaw(
 	nonce uint64,
 	isMainnet bool,
 ) (*Signature, error) {
-	hash, err := actionHash(actionData, vault, nonce)
+	hash, err := actionHash(actionData, vault, nonce, nil)
 	if err != nil {
 		return nil, err
 	}

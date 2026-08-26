@@ -15,6 +15,10 @@ type Info struct {
 }
 
 func NewInfo(apiBaseURL string) (*Info, error) {
+	return NewInfoWithPerpDexs(apiBaseURL, nil)
+}
+
+func NewInfoWithPerpDexs(apiBaseURL string, perpDexs []string) (*Info, error) {
 	info := &Info{
 		client:         NewClient(context.Background(), apiBaseURL),
 		coinToAsset:    make(map[string]int),
@@ -27,39 +31,91 @@ func NewInfo(apiBaseURL string) (*Info, error) {
 	var spotMeta *SpotMeta
 	var err error
 
-	meta, err = info.Meta()
-	if err != nil {
-		return nil, fmt.Errorf("error getting meta info: %w", err)
-	}
-
 	spotMeta, err = info.SpotMeta()
 	if err != nil {
 		return nil, fmt.Errorf("error getting spot meta info: %w", err)
 	}
 
-	// Map perp assets
-	if meta != nil {
-		for asset, assetInfo := range meta.Universe {
-			info.coinToAsset[assetInfo.Name] = asset
-			info.assetToDecimal[asset] = assetInfo.SzDecimals
-			info.perpCoins = append(info.perpCoins, assetInfo.Name)
+	if len(perpDexs) == 0 {
+		perpDexs = []string{""}
+	}
+	perpDexOffsets := map[string]int{"": 0}
+	needsPerpDexOffsets := false
+	for _, dex := range perpDexs {
+		if dex != "" {
+			needsPerpDexOffsets = true
+			break
 		}
+	}
+	if needsPerpDexOffsets {
+		allDexs, err := info.PerpDexs()
+		if err != nil {
+			return nil, fmt.Errorf("error getting perp dex list: %w", err)
+		}
+		if len(allDexs) > 1 {
+			for dexIndex, dex := range allDexs[1:] {
+				perpDexOffsets[dex.Name] = 110000 + dexIndex*10000
+			}
+		}
+	}
+
+	for _, dex := range perpDexs {
+		offset, ok := perpDexOffsets[dex]
+		if !ok {
+			return nil, fmt.Errorf("perp dex %s not found", dex)
+		}
+		meta, err = info.MetaForDex(dex)
+		if err != nil {
+			return nil, fmt.Errorf("error getting meta info for dex %s: %w", dex, err)
+		}
+		info.addPerpMeta(meta, offset)
 	}
 
 	// Map spot assets starting at 10000
-	if spotMeta != nil {
-		for _, spotInfo := range spotMeta.Universe {
-			asset := spotInfo.Index + 10000
-			info.coinToAsset[spotInfo.Name] = asset
-			info.assetToDecimal[asset] = spotMeta.Tokens[spotInfo.Tokens[0]].SzDecimals
-		}
-
-		for _, spotInfo := range spotMeta.Tokens {
-			info.spotCoins = append(info.spotCoins, spotInfo.Name)
-		}
+	if err := info.addSpotMeta(spotMeta); err != nil {
+		return nil, err
 	}
 
 	return info, nil
+}
+
+func (i *Info) addPerpMeta(meta *Meta, offset int) {
+	if meta == nil {
+		return
+	}
+	for asset, assetInfo := range meta.Universe {
+		asset += offset
+		infoName := assetInfo.Name
+		i.coinToAsset[infoName] = asset
+		i.assetToDecimal[asset] = assetInfo.SzDecimals
+		i.perpCoins = append(i.perpCoins, infoName)
+	}
+}
+
+func (i *Info) addSpotMeta(spotMeta *SpotMeta) error {
+	if spotMeta == nil {
+		return nil
+	}
+
+	tokenDecimals := make(map[int]int, len(spotMeta.Tokens))
+	for _, tokenInfo := range spotMeta.Tokens {
+		tokenDecimals[tokenInfo.Index] = tokenInfo.SzDecimals
+		i.spotCoins = append(i.spotCoins, tokenInfo.Name)
+	}
+
+	for _, spotInfo := range spotMeta.Universe {
+		if len(spotInfo.Tokens) == 0 {
+			return fmt.Errorf("spot asset %s has no tokens", spotInfo.Name)
+		}
+		decimal, ok := tokenDecimals[spotInfo.Tokens[0]]
+		if !ok {
+			return fmt.Errorf("spot asset %s references unknown token index %d", spotInfo.Name, spotInfo.Tokens[0])
+		}
+		asset := spotInfo.Index + 10000
+		i.coinToAsset[spotInfo.Name] = asset
+		i.assetToDecimal[asset] = decimal
+	}
+	return nil
 }
 
 func (i *Info) ApiBaseUrl() string {
@@ -75,9 +131,15 @@ func (i *Info) SpotCoins() []string {
 }
 
 func (i *Info) Meta() (*Meta, error) {
-	resp, err := i.client.post("/info", map[string]any{
-		"type": "meta",
-	})
+	return i.MetaForDex("")
+}
+
+func (i *Info) MetaForDex(dex string) (*Meta, error) {
+	payload := map[string]any{"type": "meta"}
+	if dex != "" {
+		payload["dex"] = dex
+	}
+	resp, err := i.client.post("/info", payload)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch meta: %w", err)
 	}
@@ -88,6 +150,21 @@ func (i *Info) Meta() (*Meta, error) {
 	}
 
 	return &meta, nil
+}
+
+func (i *Info) PerpDexs() ([]PerpDexInfo, error) {
+	resp, err := i.client.post("/info", map[string]any{
+		"type": "perpDexs",
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch perp dexs: %w", err)
+	}
+
+	var result []PerpDexInfo
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal perp dexs: %w", err)
+	}
+	return result, nil
 }
 
 func (i *Info) SpotMeta() (*SpotMeta, error) {
@@ -123,10 +200,18 @@ func (i *Info) AssetToDecimal(asset int) (int, error) {
 }
 
 func (i *Info) UserState(address string) (*UserState, error) {
-	resp, err := i.client.post("/info", map[string]any{
+	return i.UserStateForDex(address, "")
+}
+
+func (i *Info) UserStateForDex(address string, dex string) (*UserState, error) {
+	payload := map[string]any{
 		"type": "clearinghouseState",
 		"user": address,
-	})
+	}
+	if dex != "" {
+		payload["dex"] = dex
+	}
+	resp, err := i.client.post("/info", payload)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch user state: %w", err)
 	}
@@ -155,10 +240,18 @@ func (i *Info) SpotUserState(address string) (*SpotState, error) {
 }
 
 func (i *Info) OpenOrders(address string) ([]OpenOrder, error) {
-	resp, err := i.client.post("/info", map[string]any{
+	return i.OpenOrdersForDex(address, "")
+}
+
+func (i *Info) OpenOrdersForDex(address string, dex string) ([]OpenOrder, error) {
+	payload := map[string]any{
 		"type": "openOrders",
 		"user": address,
-	})
+	}
+	if dex != "" {
+		payload["dex"] = dex
+	}
+	resp, err := i.client.post("/info", payload)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch open orders: %w", err)
 	}
@@ -171,10 +264,18 @@ func (i *Info) OpenOrders(address string) ([]OpenOrder, error) {
 }
 
 func (i *Info) FrontendOpenOrders(address string) ([]FrontendOpenOrder, error) {
-	resp, err := i.client.post("/info", map[string]any{
+	return i.FrontendOpenOrdersForDex(address, "")
+}
+
+func (i *Info) FrontendOpenOrdersForDex(address string, dex string) ([]FrontendOpenOrder, error) {
+	payload := map[string]any{
 		"type": "frontendOpenOrders",
 		"user": address,
-	})
+	}
+	if dex != "" {
+		payload["dex"] = dex
+	}
+	resp, err := i.client.post("/info", payload)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch frontend open orders: %w", err)
 	}
@@ -230,9 +331,15 @@ func (i *Info) UserPortfolio(address string) ([]PortFolioTimeRangeItem, error) {
 }
 
 func (i *Info) AllMids() (map[string]string, error) {
-	resp, err := i.client.post("/info", map[string]any{
-		"type": "allMids",
-	})
+	return i.AllMidsForDex("")
+}
+
+func (i *Info) AllMidsForDex(dex string) (map[string]string, error) {
+	payload := map[string]any{"type": "allMids"}
+	if dex != "" {
+		payload["dex"] = dex
+	}
+	resp, err := i.client.post("/info", payload)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch all mids: %w", err)
 	}
@@ -245,10 +352,18 @@ func (i *Info) AllMids() (map[string]string, error) {
 }
 
 func (i *Info) UserFills(address string) ([]Fill, error) {
-	resp, err := i.client.post("/info", map[string]any{
+	return i.UserFillsForDex(address, "")
+}
+
+func (i *Info) UserFillsForDex(address string, dex string) ([]Fill, error) {
+	payload := map[string]any{
 		"type": "userFills",
 		"user": address,
-	})
+	}
+	if dex != "" {
+		payload["dex"] = dex
+	}
+	resp, err := i.client.post("/info", payload)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch user fills: %w", err)
 	}
@@ -261,14 +376,21 @@ func (i *Info) UserFills(address string) ([]Fill, error) {
 }
 
 func (i *Info) UserFillsByTime(address string, startTime int64, endTime *int64) ([]Fill, error) {
+	return i.UserFillsByTimeForDex(address, startTime, endTime, "", true)
+}
+
+func (i *Info) UserFillsByTimeForDex(address string, startTime int64, endTime *int64, dex string, aggregateByTime bool) ([]Fill, error) {
 	payload := map[string]any{
 		"type":            "userFillsByTime",
 		"user":            address,
 		"startTime":       startTime,
-		"aggregateByTime": true,
+		"aggregateByTime": aggregateByTime,
 	}
 	if endTime != nil {
 		payload["endTime"] = *endTime
+	}
+	if dex != "" {
+		payload["dex"] = dex
 	}
 
 	resp, err := i.client.post("/info", payload)
@@ -284,9 +406,15 @@ func (i *Info) UserFillsByTime(address string, startTime int64, endTime *int64) 
 }
 
 func (i *Info) MetaAndAssetCtxs() (map[string]any, error) {
-	resp, err := i.client.post("/info", map[string]any{
-		"type": "metaAndAssetCtxs",
-	})
+	return i.MetaAndAssetCtxsForDex("")
+}
+
+func (i *Info) MetaAndAssetCtxsForDex(dex string) (map[string]any, error) {
+	payload := map[string]any{"type": "metaAndAssetCtxs"}
+	if dex != "" {
+		payload["dex"] = dex
+	}
+	resp, err := i.client.post("/info", payload)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch meta and asset contexts: %w", err)
 	}
@@ -563,6 +691,185 @@ func (i *Info) ExtraAgents(user string) ([]ExtraAgent, error) {
 	var result []ExtraAgent
 	if err := json.Unmarshal(resp, &result); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal extra agents: %w", err)
+	}
+	return result, nil
+}
+
+func (i *Info) UserRateLimit(user string) (map[string]any, error) {
+	resp, err := i.client.post("/info", map[string]any{
+		"type": "userRateLimit",
+		"user": user,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch user rate limit: %w", err)
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal user rate limit: %w", err)
+	}
+	return result, nil
+}
+
+func (i *Info) UserTwapSliceFills(user string) ([]json.RawMessage, error) {
+	resp, err := i.client.post("/info", map[string]any{
+		"type": "userTwapSliceFills",
+		"user": user,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch user twap slice fills: %w", err)
+	}
+
+	var result []json.RawMessage
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal user twap slice fills: %w", err)
+	}
+	return result, nil
+}
+
+func (i *Info) UserTwapHistory(user string) ([]json.RawMessage, error) {
+	resp, err := i.client.post("/info", map[string]any{
+		"type": "userTwapHistory",
+		"user": user,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch user twap history: %w", err)
+	}
+
+	var result []json.RawMessage
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal user twap history: %w", err)
+	}
+	return result, nil
+}
+
+func (i *Info) PortfolioMarginUserState(user string) (map[string]any, error) {
+	resp, err := i.client.post("/info", map[string]any{
+		"type": "portfolioMarginUserState",
+		"user": user,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch portfolio margin user state: %w", err)
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal portfolio margin user state: %w", err)
+	}
+	return result, nil
+}
+
+func (i *Info) PerpsAtOpenInterestCap() ([]string, error) {
+	resp, err := i.client.post("/info", map[string]any{
+		"type": "perpsAtOpenInterestCap",
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch perps at open interest cap: %w", err)
+	}
+
+	var result []string
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal perps at open interest cap: %w", err)
+	}
+	return result, nil
+}
+
+func (i *Info) PredictedFundings() ([]json.RawMessage, error) {
+	resp, err := i.client.post("/info", map[string]any{
+		"type": "predictedFundings",
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch predicted fundings: %w", err)
+	}
+
+	var result []json.RawMessage
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal predicted fundings: %w", err)
+	}
+	return result, nil
+}
+
+func (i *Info) HistoricalOrders(user string) ([]json.RawMessage, error) {
+	resp, err := i.client.post("/info", map[string]any{
+		"type": "historicalOrders",
+		"user": user,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch historical orders: %w", err)
+	}
+
+	var result []json.RawMessage
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal historical orders: %w", err)
+	}
+	return result, nil
+}
+
+func (i *Info) VaultDetails(vaultAddress string, user *string) (map[string]any, error) {
+	payload := map[string]any{
+		"type":         "vaultDetails",
+		"vaultAddress": vaultAddress,
+	}
+	if user != nil {
+		payload["user"] = *user
+	}
+	resp, err := i.client.post("/info", payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch vault details: %w", err)
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal vault details: %w", err)
+	}
+	return result, nil
+}
+
+func (i *Info) UserVaultEquities(user string) ([]json.RawMessage, error) {
+	resp, err := i.client.post("/info", map[string]any{
+		"type": "userVaultEquities",
+		"user": user,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch user vault equities: %w", err)
+	}
+
+	var result []json.RawMessage
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal user vault equities: %w", err)
+	}
+	return result, nil
+}
+
+func (i *Info) UserRole(user string) (map[string]any, error) {
+	resp, err := i.client.post("/info", map[string]any{
+		"type": "userRole",
+		"user": user,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch user role: %w", err)
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal user role: %w", err)
+	}
+	return result, nil
+}
+
+func (i *Info) MaxBuilderFee(user string, builder string) (map[string]any, error) {
+	resp, err := i.client.post("/info", map[string]any{
+		"type":    "maxBuilderFee",
+		"user":    user,
+		"builder": builder,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch max builder fee: %w", err)
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal(resp, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal max builder fee: %w", err)
 	}
 	return result, nil
 }

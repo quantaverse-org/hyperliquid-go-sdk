@@ -10,7 +10,7 @@ import (
 )
 
 func TestWsTrade(t *testing.T) {
-	ws := sdk.NewWebsocketClient(sdk.MainnetAPIURL)
+	ws := sdk.NewWebsocketClient(sdk.TestnetAPIURL)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -35,7 +35,7 @@ func TestWsTrade(t *testing.T) {
 		}
 
 		// Create an info client to fetch user fills
-		info, err := sdk.NewInfo(sdk.MainnetAPIURL)
+		info, err := sdk.NewInfo(sdk.TestnetAPIURL)
 		if err != nil {
 			t.Fatalf("Failed to create sdk.Info for trade_test: %v", err)
 		}

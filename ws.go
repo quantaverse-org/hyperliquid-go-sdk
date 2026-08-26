@@ -14,10 +14,25 @@ import (
 )
 
 const (
-	SubTypeTrades       = "trades"
-	SubTypeL2Book       = "l2Book"
-	SubTypeUserFills    = "userFills"
-	SubTypeOrderUpdates = "orderUpdates"
+	SubTypeTrades                      = "trades"
+	SubTypeL2Book                      = "l2Book"
+	SubTypeUserFills                   = "userFills"
+	SubTypeOrderUpdates                = "orderUpdates"
+	SubTypeCandle                      = "candle"
+	SubTypeAllMids                     = "allMids"
+	SubTypeNotification                = "notification"
+	SubTypeWebData2                    = "webData2"
+	SubTypeWebData3                    = "webData3"
+	SubTypeActiveAssetCtx              = "activeAssetCtx"
+	SubTypeActiveAssetData             = "activeAssetData"
+	SubTypeUserEvents                  = "userEvents"
+	SubTypeUserFundings                = "userFundings"
+	SubTypeUserNonFundingLedgerUpdates = "userNonFundingLedgerUpdates"
+	SubTypeBBO                         = "bbo"
+	SubTypeTwapHistory                 = "twapHistory"
+	SubTypeTwapSliceFills              = "twapSliceFills"
+	SubTypeTwapStates                  = "twapStates"
+	SubTypeSpotState                   = "spotState"
 )
 
 type WebsocketClient struct {
@@ -25,6 +40,7 @@ type WebsocketClient struct {
 	conn          *websocket.Conn
 	mu            sync.RWMutex
 	writeMu       sync.Mutex
+	reconnectMu   sync.Mutex
 	subscriptions map[subKey]map[int]*subscriptionCallback
 	nextSubID     atomic.Int32
 	done          chan struct{}
@@ -68,8 +84,8 @@ func (w *WebsocketClient) Connect(ctx context.Context) error {
 
 	w.conn = conn
 
-	go w.readPump(ctx)
-	go w.pingPump(ctx)
+	go w.readPump(ctx, conn)
+	go w.pingPump(ctx, conn)
 
 	return w.resubscribeAll()
 }
@@ -142,14 +158,9 @@ func (w *WebsocketClient) Close() error {
 
 // Private methods
 
-func (w *WebsocketClient) readPump(ctx context.Context) {
+func (w *WebsocketClient) readPump(ctx context.Context, conn *websocket.Conn) {
 	defer func() {
-		w.mu.Lock()
-		if w.conn != nil {
-			w.conn.Close()
-			w.conn = nil
-		}
-		w.mu.Unlock()
+		w.clearConn(conn)
 	}()
 
 	for {
@@ -159,11 +170,11 @@ func (w *WebsocketClient) readPump(ctx context.Context) {
 		case <-w.done:
 			return
 		default:
-			_, msg, err := w.conn.ReadMessage()
+			_, msg, err := conn.ReadMessage()
 			if err != nil {
 				if !websocket.IsCloseError(err, websocket.CloseNormalClosure) {
 					log.Printf("websocket read error: %v", err)
-					w.reconnect()
+					go w.reconnect(conn)
 				}
 				return
 			}
@@ -183,7 +194,7 @@ func (w *WebsocketClient) readPump(ctx context.Context) {
 	}
 }
 
-func (w *WebsocketClient) pingPump(ctx context.Context) {
+func (w *WebsocketClient) pingPump(ctx context.Context, conn *websocket.Conn) {
 	ticker := time.NewTicker(50 * time.Second)
 	defer ticker.Stop()
 
@@ -194,9 +205,9 @@ func (w *WebsocketClient) pingPump(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if err := w.sendPing(); err != nil {
+			if err := w.writeJSONTo(conn, WsCommand{Method: "ping"}); err != nil {
 				log.Printf("ping error: %v", err)
-				w.reconnect()
+				go w.reconnect(conn)
 				return
 			}
 		}
@@ -216,7 +227,12 @@ func (w *WebsocketClient) dispatch(msg WSMessage) {
 	}
 }
 
-func (w *WebsocketClient) reconnect() {
+func (w *WebsocketClient) reconnect(failedConn *websocket.Conn) {
+	w.reconnectMu.Lock()
+	defer w.reconnectMu.Unlock()
+
+	w.clearConn(failedConn)
+
 	for {
 		select {
 		case <-w.done:
@@ -226,6 +242,7 @@ func (w *WebsocketClient) reconnect() {
 			err := w.Connect(ctx)
 			cancel()
 			if err == nil {
+				w.reconnectWait = time.Second
 				return
 			}
 			time.Sleep(w.reconnectWait)
@@ -237,6 +254,17 @@ func (w *WebsocketClient) reconnect() {
 	}
 }
 
+func (w *WebsocketClient) clearConn(conn *websocket.Conn) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if w.conn != conn {
+		return
+	}
+	w.conn = nil
+	conn.Close()
+}
+
 func (w *WebsocketClient) resubscribeAll() error {
 	for key, subs := range w.subscriptions {
 		if len(subs) > 0 {
@@ -245,6 +273,19 @@ func (w *WebsocketClient) resubscribeAll() error {
 				Coin:     key.coin,
 				User:     key.user,
 				Interval: key.interval,
+				Dex:      key.dex,
+			}
+			if key.hasNSigFigs {
+				sub.NSigFigs = &key.nSigFigs
+			}
+			if key.hasMantissa {
+				sub.Mantissa = &key.mantissa
+			}
+			if key.hasAggregate {
+				sub.AggregateByTime = &key.aggregateByTime
+			}
+			if key.hasPortfolio {
+				sub.IsPortfolioMargin = &key.isPortfolioMargin
 			}
 			if err := w.sendSubscribe(sub); err != nil {
 				return fmt.Errorf("resubscribe: %w", err)
@@ -269,7 +310,11 @@ func (w *WebsocketClient) sendUnsubscribe(sub Subscription) error {
 }
 
 func (w *WebsocketClient) sendPing() error {
-	return w.writeJSON(WsCommand{Method: "ping"})
+	w.mu.RLock()
+	conn := w.conn
+	w.mu.RUnlock()
+
+	return w.writeJSONTo(conn, WsCommand{Method: "ping"})
 }
 
 func (w *WebsocketClient) writeJSON(v any) error {
@@ -281,6 +326,17 @@ func (w *WebsocketClient) writeJSON(v any) error {
 	}
 
 	return w.conn.WriteJSON(v)
+}
+
+func (w *WebsocketClient) writeJSONTo(conn *websocket.Conn, v any) error {
+	w.writeMu.Lock()
+	defer w.writeMu.Unlock()
+
+	if conn == nil {
+		return fmt.Errorf("connection closed")
+	}
+
+	return conn.WriteJSON(v)
 }
 
 func (w *WebsocketClient) SubscribeToTrades(coin string, callback func(WSMessage)) (int, error) {
@@ -341,6 +397,36 @@ func matchSubscription(key subKey, msg WSMessage) bool {
 		return msg.Channel == SubTypeUserFills
 	case SubTypeOrderUpdates:
 		return msg.Channel == SubTypeOrderUpdates
+	case SubTypeCandle:
+		return msg.Channel == SubTypeCandle
+	case SubTypeAllMids:
+		return msg.Channel == SubTypeAllMids
+	case SubTypeNotification:
+		return msg.Channel == SubTypeNotification
+	case SubTypeWebData2:
+		return msg.Channel == SubTypeWebData2
+	case SubTypeWebData3:
+		return msg.Channel == SubTypeWebData3
+	case SubTypeActiveAssetCtx:
+		return msg.Channel == SubTypeActiveAssetCtx
+	case SubTypeActiveAssetData:
+		return msg.Channel == SubTypeActiveAssetData
+	case SubTypeUserEvents:
+		return msg.Channel == SubTypeUserEvents
+	case SubTypeUserFundings:
+		return msg.Channel == SubTypeUserFundings
+	case SubTypeUserNonFundingLedgerUpdates:
+		return msg.Channel == SubTypeUserNonFundingLedgerUpdates
+	case SubTypeBBO:
+		return msg.Channel == SubTypeBBO
+	case SubTypeTwapHistory:
+		return msg.Channel == SubTypeTwapHistory
+	case SubTypeTwapSliceFills:
+		return msg.Channel == SubTypeTwapSliceFills
+	case SubTypeTwapStates:
+		return msg.Channel == SubTypeTwapStates
+	case SubTypeSpotState:
+		return msg.Channel == SubTypeSpotState
 	default:
 		return false
 	}

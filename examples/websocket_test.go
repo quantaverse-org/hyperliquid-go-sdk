@@ -11,7 +11,7 @@ import (
 )
 
 func TestWebsocket(t *testing.T) {
-	ws := sdk.NewWebsocketClient(sdk.MainnetAPIURL)
+	ws := sdk.NewWebsocketClient(sdk.TestnetAPIURL)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -108,7 +108,7 @@ func TestWebsocket(t *testing.T) {
 
 		userFillsSub := sdk.Subscription{
 			Type: "userFills",
-			User: "0x1b1c0b65757066876a6fd8d562bf960dcaa0f145",
+			User: getTestAddress(t),
 		}
 
 		_, err := ws.Subscribe(userFillsSub, func(msg sdk.WSMessage) {
@@ -146,7 +146,7 @@ func TestWebsocket(t *testing.T) {
 
 		orderUpdatesSub := sdk.Subscription{
 			Type: sdk.SubTypeOrderUpdates,
-			User: "0x1b1c0b65757066876a6fd8d562bf960dcaa0f145",
+			User: getTestAddress(t),
 		}
 
 		_, err := ws.Subscribe(orderUpdatesSub, func(msg sdk.WSMessage) {
